@@ -4,82 +4,92 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LoL Synergy</title>
-   <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        #search-button {
+            position: absolute;  /* 절대 위치 지정 */
+            top: 10px;           /* 상단에서 10px */
+            right: 10px;         /* 오른쪽에서 10px */
+            padding: 5px 10px;   /* 버튼 내부 여백 */
+            font-size: 12px;      /* 글자 크기 */
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <h1>LoL Synergy</h1>
-        <p>Guess the synergy with the random champion!</p>
+        <p>랜덤 챔피언과의 시너지를 추측하세요!</p>
+
+        <button id="fetch-button">랜덤 챔피언 가져오기</button>
+        <button id="search-button" onclick="confirmSearch()">모든 챔피언 검색</button>
+
+        <p id="randomChampion" style="display:none;"></p>  <!-- 랜덤 챔피언 이름을 숨김 -->
 
         <div>
-            <button onclick="fetchRandomChampion()">Get Random Champion</button>
-        </div>
-
-        <p id="randomChampion"></p>
-
-        <div>
-            <label for="champion">Enter your Champion:</label>
+            <label for="champion">챔피언 이름을 입력하세요:</label>
             <input type="text" id="champion" name="champion" oninput="searchChampion()">
         </div>
 
         <ul id="championList" style="display:none;"></ul>
 
-        <button onclick="calculateSynergy()">Calculate Synergy</button>
+        <button onclick="calculateSynergy()">시너지 계산</button>
 
         <p id="result"></p>
 
         <div>
-            <h2>Champion History</h2>
+            <h2>챔피언 히스토리</h2>
             <ul id="historyList"></ul>
         </div>
     </div>
 
     <script>
         let randomChampion = '';
-        const history = [];
+        const history = new Map(); // 챔피언 히스토리를 Map으로 저장하여 중복 체크
 
         // 랜덤 챔피언을 서버에서 가져오기
-        function fetchRandomChampion() {
+        document.getElementById('fetch-button').onclick = function() {
             fetch('/api/random_champion')
             .then(response => response.json())
             .then(data => {
-                randomChampion = data.random_champion;
-                document.getElementById('randomChampion').textContent = `Random Champion: ${randomChampion}`;
+                randomChampion = data.random_champion; // 랜덤 챔피언 가져오기
+                document.getElementById('randomChampion').textContent = `랜덤 챔피언: ${randomChampion}`; // 표시
+                document.getElementById('randomChampion').style.display = 'block'; // 랜덤 챔피언 이름 보임
+                alert("랜덤 챔피언이 변경되었습니다!"); // 팝업 알림 추가
+            })
+            .catch(error => {
+                console.error('랜덤 챔피언 가져오기 오류:', error); // 에러 핸들링
             });
-        }
+        };
 
-        // 유저가 입력한 챔피언을 기반으로 서버에서 검색
-        function searchChampion() {
-            const query = document.getElementById('champion').value;
-
-            if (query.length > 1) {
-                fetch(`/api/champion_search?q=${query}`)
-                .then(response => response.json())
-                .then(data => {
-                    const championList = document.getElementById('championList');
-                    championList.innerHTML = '';  // 이전 목록을 지움
-                    data.forEach(champion => {
-                        const li = document.createElement('li');
-                        li.textContent = champion;
-                        li.onclick = () => selectChampion(champion);
-                        championList.appendChild(li);
-                    });
-                    championList.style.display = 'block';
-                });
-            } else {
-                document.getElementById('championList').style.display = 'none';
+        // 검색 버튼 클릭 시 확인 후 검색 수행
+        function confirmSearch() {
+            if (confirm(`모든 챔피언을 검색하시겠습니까?`)) {
+                searchAllChampions();
             }
         }
 
-        // 클릭한 챔피언 이름을 입력 필드에 넣기
-        function selectChampion(champion) {
-            document.getElementById('champion').value = champion;
-            document.getElementById('championList').style.display = 'none';
+        // 모든 챔피언 검색
+        function searchAllChampions() {
+            fetch('/api/search_all_champions') // 모든 챔피언 검색 API 호출
+            .then(response => response.json())
+            .then(data => {
+                console.log("검색 결과:", data);
+                // 결과 처리 로직을 추가하세요
+            })
+            .catch(error => {
+                console.error('모든 챔피언 검색 오류:', error);
+            });
         }
 
         // 연관성 점수 계산 요청
         function calculateSynergy() {
             const champ = document.getElementById('champion').value;
+
+            // 이미 조회한 챔피언인지 확인
+            if (history.has(champ)) {
+                alert(`${champ}은(는) 이미 조회한 챔피언입니다.`);
+                return;
+            }
 
             fetch('/api/similarity', {
                 method: 'POST',
@@ -92,25 +102,27 @@
             })
             .then(response => response.json())
             .then(data => {
-                if (data.similarity_score !== undefined) {
-                    document.getElementById('result').textContent = `Your Champion: ${data.user_champion}, Similarity Score: ${data.similarity_score}`;
-                    updateHistory(data.user_champion, data.similarity_score);
+                if (data.user_rank !== undefined) {
+                    document.getElementById('result').textContent = `랭크: ${data.user_rank}`; // Rank 표시
+                    updateHistory(data.user_champion, data.user_rank); // 챔피언 히스토리 업데이트
                 } else {
-                    document.getElementById('result').textContent = 'Error: ' + data.error;
+                    document.getElementById('result').textContent = '오류: ' + data.error;
                 }
             });
         }
 
         // 챔피언 히스토리 업데이트
-        function updateHistory(champion, score) {
-            history.push({ champion, score });
-            history.sort((a, b) => b.score - a.score); // 점수 기준으로 정렬
+        function updateHistory(champion, rank) {
+            history.set(champion, rank); // 챔피언과 랭크를 Map에 저장
+
+            // 랭크 기준으로 정렬된 배열 생성
+            const sortedHistory = Array.from(history.entries()).sort((a, b) => a[1] - b[1]);
 
             const historyList = document.getElementById('historyList');
             historyList.innerHTML = ''; // 이전 목록 초기화
-            history.forEach(item => {
+            sortedHistory.forEach(([champ, rank]) => {
                 const li = document.createElement('li');
-                li.textContent = `${item.champion} - Score: ${item.score}`;
+                li.textContent = `${champ} - 랭크: ${rank}`; // 점수가 아닌 랭크를 표시
                 historyList.appendChild(li);
             });
         }
